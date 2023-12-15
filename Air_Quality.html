@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Quality</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        #pageTitle {
+            padding: 15px;
+            background-color: #312d2d; 
+            color: White;
+        }
+        body {
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1em; 
+        }
+
+        canvas {
+            width: 850px;
+            height: 800px; 
+            margin: 20px auto; 
+            display: block;   
+        }
+    </style>
+</head>
+<body>
+    <h1 id="pageTitle">Air Quality Monitor </h1>
+    
+
+    
+    <div id="charts-container"></div>
+    <p id="airQualityStatus"></p>
+    <p id="airQualityRange"></p>
+
+    <script>
+       
+        
+        async function fetchData() {
+
+            const channelIds = ["2366956"];
+            const apiKeys = ["JGR04DMT8A7D99VO"];
+
+            for (let i = 0; i < channelIds.length; i++) {
+            const channelId = channelIds[i];
+            const apiKey = apiKeys[i];
+            var url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?key=${apiKey}`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                
+                const feeds = data.feeds;
+
+        
+                const labels = feeds.map(feed => parseFloat(feed.field2));
+                const values = feeds.map(feed => parseFloat(feed.field1));
+                
+                updateAirQualityStatus(values[values.length - 1]);
+                createOrUpdateChart(labels, values, channelId);
+                
+                
+                
+            } catch (error) {
+                console.error(`Error fetching data for channel ${channelId}:`, error);
+            }
+        }
+    }
+
+       
+        function createOrUpdateChart(labels, values, channelId) {
+            const container = document.getElementById('charts-container');
+            const chartId = `myChart-${channelId}`;
+
+            const filteredLabels = [];
+            const filteredValues = [];
+
+            for (let i = 0; i < labels.length; i++) {
+                const label = labels[i];
+                const value = values[i];
+            
+                if (!isNaN(label)) {
+                    filteredLabels.push(label);
+                    filteredValues.push(value);
+                } else if (filteredLabels.length > 0) {
+                    
+                    const lastValidLabel = filteredLabels[filteredLabels.length - 1];
+                    filteredLabels.push(lastValidLabel);
+                    filteredValues.push(value);
+                }
+            }
+            labels = filteredLabels
+            values = filteredValues
+            
+
+            
+            const existingChart = charts[chartId];
+
+            if (existingChart) {
+                
+                existingChart.data.labels = labels.map((_, index) => '');
+                existingChart.data.datasets[0].data = values;
+                existingChart.update();
+            } else {
+                
+                const canvas = document.createElement('canvas');
+                canvas.id = chartId;
+                container.appendChild(canvas);
+
+                const ctx = canvas.getContext('2d');
+                const chart = new Chart(ctx, {
+                    type: 'line', 
+                    data: {
+                        labels: labels.map((_, index) => ''),
+                        datasets: [{
+                            label: labels[10],
+                            data: values,
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)', 
+                            borderColor: 'rgba(75, 192, 192, 1)', 
+                            borderWidth: 1,
+                            fill: false 
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: "Channel ID : " + channelId  + "\n" +String(labels[0]), 
+                                font: {
+                                    size: 18
+                                }
+                            }
+                        },
+                        tooltips: {
+                            callbacks: {
+                                label: function (tooltipItem, data) {
+                                    const value = data.datasets[tooltipItem.datasetIndex].data[tooltipItem.index];
+                                    return `Air Quality: ${value}`;
+                                }
+                            }
+                        }
+                    }
+                });
+
+                
+                charts[chartId] = chart;
+            }
+        }
+        function updateAirQualityStatus(airQualityValue) {
+            const statusElement = document.getElementById('airQualityStatus');
+
+            if (airQualityValue < 400 ) {
+                statusElement.innerHTML = 'Air Quality: Good  <br><br> (Normal Outdoor Air)';
+                statusElement.style.color = 'green';
+            } else if (airQualityValue < 1000 && airQualityValue>= 400) {
+                statusElement.innerHTML = 'Air Quality: Good <br><br> (Typical CO2 levels found indoors)';
+                statusElement.style.color = 'green';
+            } else if (airQualityValue < 2000 && airQualityValue >= 1000 ) {
+                statusElement.innerHTML = 'Air Quality: Poor <br><br> (Drowsiness) ';
+                statusElement.style.color = 'black';
+            } else if (airQualityValue < 5000 && airQualityValue >= 2000 ) {
+                statusElement.innerHTML = 'Air Quality: Poor <br><br> (Headaches, Fatigue) ';
+                statusElement.style.color = 'black';
+            } else if (airQualityValue >= 40000 && airQualityValue <100000 ) {
+                statusElement.innerHTML = 'Air Quality: Toxic <br><br> (Oxygen deprivation) ';
+
+                statusElement.style.color = 'pink';
+            } else if( airQualityValue >100000 ) 
+            {
+                statusElement.innerHTML = '  <br> (Oxygen deprivation in seconds)';
+                statusElement.style.fontSize = '16px';
+                statusElement.style.color = 'darkred';
+            }
+            statusElement.style.fontSize = '18px';
+
+            const statusElement1 = document.getElementById('airQualityRange');
+            statusElement1.innerHTML = '<br><br> ppm < 400 : Normal Outdoor Air <br><br> ppm <= 1000 : Normal Indoor Air <br><br>'
+            statusElement1.innerHTML +='ppm <= 2000 :  Poor Air Quality<br><br> ppm <= 5000 : Air can Headaches, fatigue <br><br> ppm >=40000 : Toxic Air (Oxygen deprivation) <br><br>'
+            statusElement1.innerHTML +='ppm >= 100000 :  Oxygen deprivation in seconds'
+            statusElement1.style.fontSize = '15px';
+        }
+
+
+        
+        const charts = {};
+
+        
+        fetchData();
+
+        
+        setInterval(function () {
+            fetchData();
+        }, 300); 
+    </script>
+</body>
+</html>
+
+
+
+
+
+
